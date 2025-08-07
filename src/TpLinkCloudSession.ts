@@ -24,6 +24,19 @@ export class TpLinkCloudSession {
     }
 
     async getDeviceList(): Promise<Array<ITpLinkCloudDeviceListItem>> {
+        const response = await this.makeRequest("getDeviceList");
+
+        if ( ! response.deviceList ) {
+            throw new Error("No device list found in response");
+        }
+
+        return response.deviceList || [];
+    }
+
+    async makeRequest(
+        method: string,
+        params: Record<string, any> = {}
+    ): Promise<Record<string, any>> {
         const request = {
             method: "POST",
             url: "https://wap.tplinkcloud.com",
@@ -40,16 +53,16 @@ export class TpLinkCloudSession {
                 "User-Agent": this.userAgent,
                 "Content-Type": "application/json"
             },
-            data: { method: "getDeviceList" }
+            data: { method, ...params }
         };
 
         const response = await axios(request);
 
         if( ! response.data || response.data.error_code !== 0 ){
-            throw new Error(`Failed to fetch devices: ${response.data.error_code}`);
+            throw new Error(`Request failed: ${response.data.error_code}`);
         }
 
-        return response.data.result.deviceList;
+        return response.data.result;
     }
 }
 
