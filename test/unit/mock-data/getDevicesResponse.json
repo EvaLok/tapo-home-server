@@ -1,0 +1,22 @@
+[
+  {
+    "deviceType": "SMART.TAPOPLUG",
+    "accountApiUrl": "http://aps1-account-api-internal.tplinkcloud.com",
+    "role": 0,
+    "fwVer": "1.1.2 Build 240531 Rel.204226",
+    "appServerUrl": "https://aps1-wap.tplinkcloud.com",
+    "deviceRegion": "ap-southeast-1",
+    "deviceId": "8022A-device-id-1234567890",
+    "deviceName": "P306",
+    "deviceHwVer": "1.0",
+    "alias": "U21-alias-string-1234567890",
+    "deviceMac": "DC62-MAC-ADDRESS-1234",
+    "oemId": "BC791-OEM-ID-1234567890",
+    "deviceModel": "P306(US)",
+    "hwId": "0DF32-HW-ID-1234567890",
+    "fwId": "0000-FW-ID-1234567890",
+    "isSameRegion": true,
+    "appServerUrlV2": "https://aps1-wap.tplinkcloud.com",
+    "status": 0
+  }
+]
