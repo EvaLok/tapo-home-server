@@ -1,0 +1,24 @@
+{
+  "name": "tapo-home-server",
+  "type": "module",
+  "version": "0.0.1",
+  "description": "for doing stuff with tapo home devices",
+  "main": "dist/main.js",
+  "repository": "git@github.com:EvaLok/tapo-home-server.git",
+  "author": "eva <eva.aedea@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^5.2.2",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.2.0",
+    "chai": "^5.2.1",
+    "dotenv": "^17.2.1",
+    "mocha": "^11.7.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  }
+}
