@@ -23,7 +23,7 @@ export class TpLinkCloudSession {
         this.userAgent = params.userAgent;
     }
 
-    async getDevices(): Promise<Array<any>> {
+    async getDeviceList(): Promise<Array<ITpLinkCloudDeviceListItem>> {
         const request = {
             method: "POST",
             url: "https://wap.tplinkcloud.com",
@@ -72,4 +72,25 @@ export interface ITpLinkCloudProperties {
     netType?: string;
     locale?: string;
     userAgent?: string;
+}
+
+export interface ITpLinkCloudDeviceListItem {
+    deviceType: string;
+    accountApiUrl: string;
+    role: number;
+    fwVer: string;
+    appServerUrl: string;
+    deviceRegion: string;
+    deviceId: string;
+    deviceName: string;
+    deviceHwVer: string;
+    alias: string;
+    deviceMac: string;
+    oemId: string;
+    deviceModel: string;
+    hwId: string;
+    fwId: string;
+    isSameRegion: boolean;
+    appServerUrlV2: string;
+    status: number;
 }

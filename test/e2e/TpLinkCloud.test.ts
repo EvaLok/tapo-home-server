@@ -26,10 +26,14 @@ describe(`TpLinkCloud`, function () {
             Assert.equal(cloud.locale, session.locale, "Locale should match the one used in login");
             Assert.equal(cloud.userAgent, session.userAgent, "UserAgent should match the one used in login");
 
-            // get devices
-            const devices = await session.getDevices();
+            // get device list
+            const devices = await session.getDeviceList();
 
             Assert.isArray(devices);
+
+            const p306 = devices.find(device => device.deviceName === "P306");
+            Assert.isDefined(p306, "P306 device should be found in the device list");
+
         });
     });
 });
