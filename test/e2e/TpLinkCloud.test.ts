@@ -16,7 +16,15 @@ describe(`TpLinkCloud`, function () {
 
             const result = await cloud.login();
 
-            Assert.isString(result);
+            Assert.isObject(result, "Login should return a session object");
+            Assert.isString(result.token, "Session token should be a string");
+            Assert.equal(cloud.termID, result.termID, "TermID should match the one used in login");
+            Assert.equal(cloud.appName, result.appName, "AppName should match the one used in login");
+            Assert.equal(cloud.appVer, result.appVer, "AppVer should match the one used in login");
+            Assert.equal(cloud.ospf, result.ospf, "OSPF should match the one used in login");
+            Assert.equal(cloud.netType, result.netType, "NetType should match the one used in login");
+            Assert.equal(cloud.locale, result.locale, "Locale should match the one used in login");
+            Assert.equal(cloud.userAgent, result.userAgent, "UserAgent should match the one used in login");
 
         });
     });

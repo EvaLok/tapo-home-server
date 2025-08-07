@@ -1,16 +1,14 @@
 import { v4 } from "uuid";
 import axios from "axios";
+import {
+    ITpLinkCloudProperties,
+    TpLinkCloudSession
+} from "./TpLinkCloudSession.js";
 
 interface ITpLinkCloudConstructorParams {
     username: string;
     password: string;
-    termID?: string;
-    appName?: string;
-    appVer?: string;
-    ospf?: string;
-    netType?: string;
-    locale?: string;
-    userAgent?: string;
+
 }
 
 export class TpLinkCloud {
@@ -24,7 +22,9 @@ export class TpLinkCloud {
     public readonly locale: string;
     public readonly userAgent: string;
 
-    constructor(params: ITpLinkCloudConstructorParams) {
+    constructor(
+        params: ITpLinkCloudConstructorParams & ITpLinkCloudProperties
+    ) {
         this.username = params.username;
         this.password = params.password;
         this.termID = params.termID ?? v4();
@@ -36,45 +36,51 @@ export class TpLinkCloud {
         this.userAgent = params.userAgent ?? "Dalvik/2.1.0 (Linux; U; Android 6.0.1; A0001 Build/M4B30X)";
     }
 
-    // @todo: return a TpLinkCloudSession object
-    async login(): Promise<any> {
-        // @todo: don't use hard-coded values for appName / appType, appVer, ospf, netType, locale, userAgent
+    async login(): Promise<TpLinkCloudSession> {
         const request = {
             method: "POST",
             url: "https://wap.tplinkcloud.com",
             params: {
-                appName: "Kasa_Android",
+                appName: this.appName,
                 termID: this.termID,
-                appVer: "1.4.4.607",
-                ospf: "Android+6.0.1",
-                netType: "wifi",
-                locale: "es_ES"
+                appVer: this.appVer,
+                ospf: this.ospf,
+                netType: this.netType,
+                locale: this.locale
             },
             data: {
                 method: "login",
                 url: "https://wap.tplinkcloud.com",
                 params: {
-                    appType: "Kasa_Android",
+                    appType: this.appName,
                     cloudPassword: this.password,
                     cloudUserName: this.username,
                     terminalUUID: this.termID
                 }
             },
             headers: {
-                "User-Agent":
-                    "Dalvik/2.1.0 (Linux; U; Android 6.0.1; A0001 Build/M4B30X)",
+                "User-Agent": this.userAgent,
                 "Content-Type": "application/json"
             }
         };
 
         const response = await axios(request);
 
-        if ( ! response.data || response.data.error_code !== 0 ){
+        if (!response.data || response.data.error_code !== 0) {
             throw new Error(`Login failed: ${response.data.error_code}`);
         }
 
         const token = response.data.result.token;
 
-        return token;
+        return new TpLinkCloudSession({
+            token: token,
+            termID: this.termID,
+            appName: this.appName,
+            appVer: this.appVer,
+            ospf: this.ospf,
+            netType: this.netType,
+            locale: this.locale,
+            userAgent: this.userAgent
+        });
     }
 }
