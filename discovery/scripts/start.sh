@@ -181,16 +181,64 @@ fi
 
 # 6) Root & remount, install mitm CA into system store
 log "Enabling root and installing mitmproxy CA into system trust store..."
-if ! adb root >/dev/null 2>&1; then
+
+# Enable root access (this restarts ADB daemon on device, causing temporary disconnection)
+if adb root >/dev/null 2>&1; then
+	log "Root access enabled, waiting for ADB daemon to restart..."
+	
+	# Wait for device to reconnect after root access
+	if ! timeout 60 adb wait-for-device; then
+		log "ERROR: Device failed to reconnect after enabling root access"
+		adb devices
+		exit 1
+	fi
+	
+	# Verify ADB connection is stable after root
+	ROOT_ADB_READY=false
+	for i in $(seq 1 15); do
+		DEVICE_STATE=$(adb get-state 2>/dev/null || echo "unknown")
+		
+		if [ "$DEVICE_STATE" = "device" ]; then
+			if adb shell echo "test" >/dev/null 2>&1; then
+				ROOT_ADB_READY=true
+				log "ADB connection verified after root access (attempt $i/15)"
+				break
+			fi
+		fi
+		
+		log "ADB not ready after root (state: $DEVICE_STATE), waiting... (attempt $i/15)"
+		sleep 2
+	done
+	
+	if [ "$ROOT_ADB_READY" = "false" ]; then
+		log "ERROR: ADB connection failed after enabling root access"
+		adb devices
+		exit 1
+	fi
+	
+	# Now try to remount system partition
+	if ! adb remount >/dev/null 2>&1; then
+		log "WARNING: Failed to remount system partition. This may be expected on some emulator versions."
+	fi
+else
 	log "WARNING: Failed to enable root access. Checking device status..."
 	adb devices
-	adb shell getprop ro.debuggable
-	log "Trying to continue anyway..."
+	DEBUGGABLE=$(adb shell getprop ro.debuggable 2>/dev/null || echo "unknown")
+	log "Device debuggable property: $DEBUGGABLE"
+	
+	# Check if this is a Google Play image (which doesn't support root)
+	BUILD_TYPE=$(adb shell getprop ro.build.type 2>/dev/null || echo "unknown")
+	log "Build type: $BUILD_TYPE"
+	
+	if [ "$BUILD_TYPE" = "user" ]; then
+		log "ERROR: This appears to be a production/user build that doesn't support root access"
+		log "Make sure the emulator is using Google APIs image, not Google Play image"
+		exit 1
+	else
+		log "Trying to continue without root access (certificate installation may fail)..."
+	fi
 fi
-sleep 1
-if ! adb remount >/dev/null 2>&1; then
-	log "WARNING: Failed to remount system partition. This may be expected on some emulator versions."
-fi
+
 sleep 1
 
 # Ensure mitm CA exists
@@ -275,7 +323,26 @@ if [ "$ADB_READY_REBOOT" = "false" ]; then
 fi
 
 # 8) Re-enable root after reboot
-adb root >/dev/null 2>&1 || true
+log "Re-enabling root access after reboot..."
+if adb root >/dev/null 2>&1; then
+	log "Root access re-enabled, waiting for ADB daemon to restart..."
+	
+	# Wait for device to reconnect after root access
+	if ! timeout 60 adb wait-for-device; then
+		log "WARNING: Device failed to reconnect after re-enabling root access"
+		adb devices
+	else
+		# Quick verification that root is working
+		sleep 2
+		if adb shell echo "test" >/dev/null 2>&1; then
+			log "Root access verified after reboot"
+		else
+			log "WARNING: Root access may not be working properly after reboot"
+		fi
+	fi
+else
+	log "WARNING: Failed to re-enable root access after reboot"
+fi
 sleep 1
 
 # 9) Confirm/force HTTP proxy via settings too (belt and suspenders)
