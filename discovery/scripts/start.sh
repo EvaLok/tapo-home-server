@@ -23,9 +23,12 @@ sleep 1
 # x11vnc listens on localhost:5900; novnc will proxy to it
 x11vnc -display :0 -nopw -forever -shared -rfbport 5900 >/var/log/x11vnc.log 2>&1 &
 sleep 1
-# noVNC served on 6080
+# noVNC served on 6080 with English language forced
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+export LANGUAGE=en_US:en
 websockify --web=/usr/share/novnc 6080 localhost:5900 >/var/log/novnc.log 2>&1 &
-log "noVNC available at http://localhost:6080"
+log "noVNC available at http://localhost:6080 (English interface)"
 
 # 2) Start mitmproxy (port 8080) and mitmweb (port 8081)
 log "Starting mitmproxy and mitmweb..."
