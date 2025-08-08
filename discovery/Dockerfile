@@ -43,6 +43,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	locales \
 	# emulator runtime deps
 	libc6 libstdc++6 libgcc-s1 libdbus-1-3 libnss3 libx11-6 libxext6 libxi6 libxrender1 libxrandr2 libxfixes3 libxcursor1 libxcomposite1 libxdamage1 libxkbcommon0 libgbm1 libglu1-mesa \
+	# PulseAudio library for emulator QEMU audio subsystem
+	libpulse0 \
 	qemu-kvm xz-utils \
 	&& locale-gen en_US.UTF-8 \
 	&& rm -rf /var/lib/apt/lists/*
