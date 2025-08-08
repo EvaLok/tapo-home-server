@@ -35,10 +35,12 @@ describe(`TpLinkCloud`, function () {
             Assert.isDefined(p306, "P306 device should be found in the device list");
 
 
-            // get device info
-            const deviceInfo = await session.getDeviceInfo(p306);
+            // get device children
+            const children = await session.getChildDevices(p306);
 
-            Assert.isObject(deviceInfo, "Device info should be an object");
+            Assert.isArray(children, "Device info should be an array");
+            Assert.isAtLeast(children.length, 1, "Device should have at least one child device");
+
 
 
         });

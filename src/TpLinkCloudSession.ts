@@ -49,6 +49,23 @@ export class TpLinkCloudSession {
         return response as ITpLinkCloudDeviceListItem;
     }
 
+    async getChildDevices( device: ITpLinkCloudDeviceListItem ) : Promise<ITpLinkCloudDeviceListItem[]> {
+        const response = await this.makeRequest(
+            "getDeviceInfo",
+            device.appServerUrl,
+            {
+                deviceId: device.deviceId,
+                componentId: "00",
+            }
+        );
+
+        if ( ! response ) {
+            throw new Error(`No device info found for deviceId: ${device.deviceId}`);
+        }
+
+        return [response] as ITpLinkCloudDeviceListItem[];
+    }
+
     async makeRequest(
         method: string,
         url: string,
