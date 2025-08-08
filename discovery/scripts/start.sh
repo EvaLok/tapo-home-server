@@ -182,6 +182,10 @@ fi
 # 6) Root & remount, install mitm CA into system store
 log "Enabling root and installing mitmproxy CA into system trust store..."
 
+# Track whether we have system write access
+SYSTEM_WRITABLE=false
+CERT_INSTALLED=false
+
 # Enable root access (this restarts ADB daemon on device, causing temporary disconnection)
 if adb root >/dev/null 2>&1; then
 	log "Root access enabled, waiting for ADB daemon to restart..."
@@ -217,8 +221,12 @@ if adb root >/dev/null 2>&1; then
 	fi
 	
 	# Now try to remount system partition
-	if ! adb remount >/dev/null 2>&1; then
+	if adb remount >/dev/null 2>&1; then
+		log "System partition remounted as writable"
+		SYSTEM_WRITABLE=true
+	else
 		log "WARNING: Failed to remount system partition. This may be expected on some emulator versions."
+		SYSTEM_WRITABLE=false
 	fi
 else
 	log "WARNING: Failed to enable root access. Device may have restarted - waiting for reconnection..."
@@ -268,7 +276,8 @@ else
 		log "Make sure the emulator is using Google APIs image, not Google Play image"
 		exit 1
 	else
-		log "Continuing without root access (certificate installation may fail)..."
+		log "Continuing without root access (certificate installation will be skipped)..."
+		SYSTEM_WRITABLE=false
 	fi
 fi
 
@@ -291,104 +300,123 @@ if [ -f "${MITM_PEM}" ]; then
 	# Compute subject hash for Android cacerts filename
 	HASH="$(openssl x509 -subject_hash_old -in "${MITM_PEM}" -noout)"
 	openssl x509 -in "${MITM_PEM}" -outform DER -out "${MITM_DER}"
-	adb push "${MITM_DER}" "/system/etc/security/cacerts/${HASH}.0" >/dev/null
-	adb shell "chmod 644 /system/etc/security/cacerts/${HASH}.0" >/dev/null
-	log "Installed mitmproxy CA as /system/etc/security/cacerts/${HASH}.0"
+	
+	# Only attempt system certificate installation if we have write access
+	if [ "$SYSTEM_WRITABLE" = "true" ]; then
+		if adb push "${MITM_DER}" "/system/etc/security/cacerts/${HASH}.0" >/dev/null 2>&1; then
+			if adb shell "chmod 644 /system/etc/security/cacerts/${HASH}.0" >/dev/null 2>&1; then
+				log "Installed mitmproxy CA as /system/etc/security/cacerts/${HASH}.0"
+				CERT_INSTALLED=true
+			else
+				log "WARNING: Failed to set permissions on system certificate"
+			fi
+		else
+			log "WARNING: Failed to install certificate to system store (push failed)"
+		fi
+	else
+		log "WARNING: System partition not writable - skipping system certificate installation"
+		log "HTTPS traffic interception may not work properly without system certificate"
+		log "Consider using an emulator image that supports root access for full functionality"
+	fi
 else
 	log "WARNING: mitmproxy CA PEM not found; HTTPS intercept may fail."
 fi
 
-# 7) Reboot to apply system CA changes
-log "Rebooting emulator to apply system CA..."
-adb reboot
-log "Waiting for reboot to complete..."
-if ! timeout 300 adb wait-for-device; then
-	log "ERROR: Emulator failed to reboot within 5 minutes"
-	exit 1
-fi
-
-# Wait for boot completion after reboot
-REBOOT_START=$(date +%s)
-while true; do
-	CURRENT_TIME=$(date +%s)
-	ELAPSED=$((CURRENT_TIME - REBOOT_START))
-	
-	if [ $ELAPSED -gt 300 ]; then  # 5 minute timeout for reboot
-		log "ERROR: Reboot timeout after 5 minutes"
+# 7) Reboot to apply system CA changes (only if certificate was installed)
+if [ "$CERT_INSTALLED" = "true" ]; then
+	log "Rebooting emulator to apply system CA..."
+	adb reboot
+	log "Waiting for reboot to complete..."
+	if ! timeout 300 adb wait-for-device; then
+		log "ERROR: Emulator failed to reboot within 5 minutes"
 		exit 1
 	fi
-	
-	BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || echo "")
-	if [ "$BOOT_STATUS" = "1" ]; then
-		log "Reboot completed after ${ELAPSED} seconds"
-		break
-	fi
-	
-	if [ $((ELAPSED % 30)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
-		log "Still rebooting... ${ELAPSED}s elapsed"
-	fi
-	
-	sleep 5
-done
-sleep 5
 
-# Re-verify ADB connection after reboot
-log "Verifying ADB connection after reboot..."
-ADB_READY_REBOOT=false
-for i in $(seq 1 20); do
-	DEVICE_STATE=$(adb get-state 2>/dev/null || echo "unknown")
-	
-	if [ "$DEVICE_STATE" = "device" ]; then
-		if adb shell echo "test" >/dev/null 2>&1; then
-			ADB_READY_REBOOT=true
-			log "ADB connection verified after reboot (attempt $i/20)"
+	# Wait for boot completion after reboot
+	REBOOT_START=$(date +%s)
+	while true; do
+		CURRENT_TIME=$(date +%s)
+		ELAPSED=$((CURRENT_TIME - REBOOT_START))
+		
+		if [ $ELAPSED -gt 300 ]; then  # 5 minute timeout for reboot
+			log "ERROR: Reboot timeout after 5 minutes"
+			exit 1
+		fi
+		
+		BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || echo "")
+		if [ "$BOOT_STATUS" = "1" ]; then
+			log "Reboot completed after ${ELAPSED} seconds"
 			break
 		fi
-	fi
-	
-	log "ADB not ready after reboot (state: $DEVICE_STATE), waiting... (attempt $i/20)"
-	sleep 2
-done
-
-if [ "$ADB_READY_REBOOT" = "false" ]; then
-	log "WARNING: ADB connection issues after reboot, but continuing..."
-	adb devices
-fi
-
-# 8) Re-enable root after reboot
-log "Re-enabling root access after reboot..."
-if adb root >/dev/null 2>&1; then
-	log "Root access re-enabled, waiting for ADB daemon to restart..."
-	
-	# Wait for device to reconnect after root access
-	if ! timeout 60 adb wait-for-device; then
-		log "WARNING: Device failed to reconnect after re-enabling root access"
-		adb devices
-	else
-		# Quick verification that root is working
-		sleep 2
-		if adb shell echo "test" >/dev/null 2>&1; then
-			log "Root access verified after reboot"
-		else
-			log "WARNING: Root access may not be working properly after reboot"
+		
+		if [ $((ELAPSED % 30)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+			log "Still rebooting... ${ELAPSED}s elapsed"
 		fi
-	fi
-else
-	log "WARNING: Failed to re-enable root access after reboot"
-fi
-sleep 1
+		
+		sleep 5
+	done
+	sleep 5
 
-# 9) Confirm/force HTTP proxy via settings too (belt and suspenders)
+	# Re-verify ADB connection after reboot
+	log "Verifying ADB connection after reboot..."
+	ADB_READY_REBOOT=false
+	for i in $(seq 1 20); do
+		DEVICE_STATE=$(adb get-state 2>/dev/null || echo "unknown")
+		
+		if [ "$DEVICE_STATE" = "device" ]; then
+			if adb shell echo "test" >/dev/null 2>&1; then
+				ADB_READY_REBOOT=true
+				log "ADB connection verified after reboot (attempt $i/20)"
+				break
+			fi
+		fi
+		
+		log "ADB not ready after reboot (state: $DEVICE_STATE), waiting... (attempt $i/20)"
+		sleep 2
+	done
+
+	if [ "$ADB_READY_REBOOT" = "false" ]; then
+		log "WARNING: ADB connection issues after reboot, but continuing..."
+		adb devices
+	fi
+
+	# 8) Re-enable root after reboot
+	log "Re-enabling root access after reboot..."
+	if adb root >/dev/null 2>&1; then
+		log "Root access re-enabled, waiting for ADB daemon to restart..."
+		
+		# Wait for device to reconnect after root access
+		if ! timeout 60 adb wait-for-device; then
+			log "WARNING: Device failed to reconnect after re-enabling root access"
+			adb devices
+		else
+			# Quick verification that root is working
+			sleep 2
+			if adb shell echo "test" >/dev/null 2>&1; then
+				log "Root access verified after reboot"
+			else
+				log "WARNING: Root access may not be working properly after reboot"
+			fi
+		fi
+	else
+		log "WARNING: Failed to re-enable root access after reboot"
+	fi
+	sleep 1
+else
+	log "Skipping reboot since no system certificate was installed"
+fi
+
+# 8) Confirm/force HTTP proxy via settings too (belt and suspenders)
 adb shell settings put global http_proxy "10.0.2.2:8080" || true
 
-# 10) Start Frida server inside emulator
+# 9) Start Frida server inside emulator
 log "Starting frida-server inside emulator..."
 adb push /tools/frida-server /data/local/tmp/frida-server >/dev/null
 adb shell "chmod 755 /data/local/tmp/frida-server"
 # Start frida-server in background on device
 adb shell "/data/local/tmp/frida-server >/dev/null 2>&1 &"
 
-# 11) Auto-install APKs from /apks (optional)
+# 10) Auto-install APKs from /apks (optional)
 if ls /apks/*.apk >/dev/null 2>&1; then
 	log "Installing APKs from /apks..."
 	for apk in /apks/*.apk; do
