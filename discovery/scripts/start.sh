@@ -43,37 +43,78 @@ log "Starting ADB server..."
 adb start-server >/var/log/adb.log 2>&1 || true
 
 # 4) Start Android emulator with proxy to mitmproxy
-# Check if KVM is available; fallback to software emulation if not
-EMULATOR_ACCEL=""
+# Check if KVM is available; use optimized settings for each mode
+EMULATOR_ARGS=""
 if [ -c /dev/kvm ]; then
 	log "KVM device found - using hardware acceleration"
-	EMULATOR_ACCEL="-accel on"
+	EMULATOR_ARGS="-accel on -gpu swiftshader_indirect -qemu -m 2048"
 else
-	log "KVM device not available - using software emulation (slower but works)"
-	EMULATOR_ACCEL="-accel off"
+	log "KVM device not available - using optimized software emulation settings"
+	# Use conservative settings for software emulation to avoid hanging
+	EMULATOR_ARGS="-accel off -gpu off -qemu -m 1024"
 fi
 
-log "Launching Android emulator (this can take ~30-60s with KVM, 2-5 minutes without)..."
+log "Launching Android emulator..."
+if [ -c /dev/kvm ]; then
+	log "With KVM: Expected boot time ~30-60 seconds"
+else
+	log "Without KVM: Expected boot time ~3-8 minutes (be patient!)"
+fi
+
 # Important flags:
 # -writable-system: allow remount /system to install CA
 # -http-proxy: force emulator network through mitmproxy (host from emulator is 10.0.2.2)
 emulator -avd tapo-avd \
 	-no-boot-anim \
-	-gpu swiftshader_indirect \
 	-camera-back none -camera-front none \
 	-netdelay none -netspeed full \
 	-writable-system \
 	-http-proxy http://10.0.2.2:8080 \
-	${EMULATOR_ACCEL} \
-	-qemu -m 2048 >/var/log/emulator.log 2>&1 &
+	${EMULATOR_ARGS} >/var/log/emulator.log 2>&1 &
 
-# 5) Wait for boot
+# 5) Wait for boot with timeout
 log "Waiting for device to boot..."
-adb wait-for-device
-# Wait for sys.boot_completed=1
-until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; do
-	sleep 1
+BOOT_TIMEOUT=600  # 10 minutes max for software emulation
+BOOT_START=$(date +%s)
+
+# First wait for device to be detected
+log "Waiting for emulator to start..."
+if ! timeout 120 adb wait-for-device; then
+	log "ERROR: Emulator failed to start within 2 minutes"
+	log "Check emulator logs: tail /var/log/emulator.log"
+	exit 1
+fi
+
+log "Device detected, waiting for boot completion..."
+# Wait for sys.boot_completed=1 with timeout
+while true; do
+	CURRENT_TIME=$(date +%s)
+	ELAPSED=$((CURRENT_TIME - BOOT_START))
+	
+	if [ $ELAPSED -gt $BOOT_TIMEOUT ]; then
+		log "ERROR: Boot timeout after ${BOOT_TIMEOUT} seconds"
+		log "This can happen in software emulation mode. Try:"
+		log "1. Ensure you have enough free RAM (at least 4GB)"
+		log "2. Close other applications to free up CPU"
+		log "3. Check emulator logs: tail /var/log/emulator.log"
+		exit 1
+	fi
+	
+	# Check boot status
+	BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || echo "")
+	if [ "$BOOT_STATUS" = "1" ]; then
+		log "Boot completed after ${ELAPSED} seconds"
+		break
+	fi
+	
+	# Progress indicator every 30 seconds
+	if [ $((ELAPSED % 30)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+		log "Still booting... ${ELAPSED}s elapsed (timeout in $((BOOT_TIMEOUT - ELAPSED))s)"
+	fi
+	
+	sleep 5
 done
+
 # Give a bit more time for settings provider to be ready
 sleep 3
 
@@ -111,9 +152,34 @@ fi
 # 7) Reboot to apply system CA changes
 log "Rebooting emulator to apply system CA..."
 adb reboot
-adb wait-for-device
-until adb shell getprop sys.boot_completed 2>/dev/null | grep -q "1"; do
-	sleep 1
+log "Waiting for reboot to complete..."
+if ! timeout 300 adb wait-for-device; then
+	log "ERROR: Emulator failed to reboot within 5 minutes"
+	exit 1
+fi
+
+# Wait for boot completion after reboot
+REBOOT_START=$(date +%s)
+while true; do
+	CURRENT_TIME=$(date +%s)
+	ELAPSED=$((CURRENT_TIME - REBOOT_START))
+	
+	if [ $ELAPSED -gt 300 ]; then  # 5 minute timeout for reboot
+		log "ERROR: Reboot timeout after 5 minutes"
+		exit 1
+	fi
+	
+	BOOT_STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r\n' || echo "")
+	if [ "$BOOT_STATUS" = "1" ]; then
+		log "Reboot completed after ${ELAPSED} seconds"
+		break
+	fi
+	
+	if [ $((ELAPSED % 30)) -eq 0 ] && [ $ELAPSED -gt 0 ]; then
+		log "Still rebooting... ${ELAPSED}s elapsed"
+	fi
+	
+	sleep 5
 done
 sleep 3
 
