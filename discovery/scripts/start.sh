@@ -82,6 +82,8 @@ log "Waiting for emulator to start..."
 if ! timeout 120 adb wait-for-device; then
 	log "ERROR: Emulator failed to start within 2 minutes"
 	log "Check emulator logs: tail /var/log/emulator.log"
+	echo "[startup] Last 50 lines of emulator.log:"
+  tail -n 50 /var/log/emulator.log
 	exit 1
 fi
 
