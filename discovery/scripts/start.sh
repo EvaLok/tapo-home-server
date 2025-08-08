@@ -286,16 +286,44 @@ if [ -f "${MITM_PEM}" ]; then
 	
 	# Install system certificate (we have guaranteed root access)
 	log "Installing mitmproxy CA certificate to system trust store..."
-	if adb push "${MITM_DER}" "/system/etc/security/cacerts/${HASH}.0" >/dev/null 2>&1; then
-		if adb shell "chmod 644 /system/etc/security/cacerts/${HASH}.0" >/dev/null 2>&1; then
-			log "Successfully installed mitmproxy CA as /system/etc/security/cacerts/${HASH}.0"
+	
+	# First check if the cacerts directory exists and create if needed
+	CACERTS_DIR="/system/etc/security/cacerts"
+	if ! adb shell "test -d ${CACERTS_DIR}" >/dev/null 2>&1; then
+		log "Creating cacerts directory: ${CACERTS_DIR}"
+		if ! adb shell "mkdir -p ${CACERTS_DIR}" >/dev/null 2>&1; then
+			log "ERROR: Failed to create cacerts directory"
+			log "Debug: Checking system partition mount status..."
+			adb shell "mount | grep system"
+			adb shell "ls -la /system/etc/security/"
+			exit 1
+		fi
+	fi
+	
+	# Set proper permissions on cacerts directory
+	adb shell "chmod 755 ${CACERTS_DIR}" >/dev/null 2>&1 || true
+	
+	# Install the certificate
+	CERT_PATH="${CACERTS_DIR}/${HASH}.0"
+	log "Installing certificate as ${CERT_PATH}"
+	
+	if adb push "${MITM_DER}" "${CERT_PATH}" >/dev/null 2>&1; then
+		if adb shell "chmod 644 ${CERT_PATH}" >/dev/null 2>&1; then
+			log "Successfully installed mitmproxy CA as ${CERT_PATH}"
 			CERT_INSTALLED=true
 		else
 			log "ERROR: Failed to set permissions on system certificate"
+			log "Debug: Checking certificate file status..."
+			adb shell "ls -la ${CERT_PATH}"
 			exit 1
 		fi
 	else
 		log "ERROR: Failed to install certificate to system store"
+		log "Debug: Certificate installation diagnostics..."
+		adb shell "ls -la ${CACERTS_DIR}/"
+		adb shell "df /system"
+		adb shell "mount | grep system"
+		log "Local certificate file size: $(stat -c%s ${MITM_DER}) bytes"
 		exit 1
 	fi
 else
