@@ -51,7 +51,7 @@ if [ -c /dev/kvm ]; then
 else
 	log "KVM device not available - using optimized software emulation settings"
 	# Use conservative settings for software emulation to avoid hanging
-	EMULATOR_ARGS="-accel off -gpu off -qemu -m 1024"
+	EMULATOR_ARGS="-accel off -gpu off -qemu -m 2048"
 fi
 
 log "Launching Android emulator..."
@@ -84,12 +84,13 @@ log "Waiting for emulator to start..."
 if ! timeout 120 adb wait-for-device; then
 	log "ERROR: Emulator failed to start within 2 minutes"
 	log "Check emulator logs: tail /var/log/emulator.log"
-	echo "[startup] Last 50 lines of emulator.log:"
+	log "Last 50 lines of emulator.log:"
   tail -n 50 /var/log/emulator.log
 	exit 1
 fi
 
 log "Device detected, waiting for boot completion..."
+
 # Wait for sys.boot_completed=1 with timeout
 while true; do
 	CURRENT_TIME=$(date +%s)
@@ -101,6 +102,8 @@ while true; do
 		log "1. Ensure you have enough free RAM (at least 4GB)"
 		log "2. Close other applications to free up CPU"
 		log "3. Check emulator logs: tail /var/log/emulator.log"
+		log "Last 50 lines of emulator.log:"
+    tail -n 50 /var/log/emulator.log
 		exit 1
 	fi
 	
