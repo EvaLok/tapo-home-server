@@ -3,8 +3,9 @@
 # - Xvfb + Fluxbox + x11vnc + noVNC
 # - mitmproxy + mitmweb (via pipx)
 # - Frida tools and frida-server (android-x86_64)
-# NOTE: Requires host KVM device passed to container:
+# NOTE: For best performance, pass host KVM device to container:
 #   --device /dev/kvm
+# Will fallback to software emulation if KVM is not available.
 
 FROM ubuntu:24.04
 
@@ -94,5 +95,6 @@ RUN mkdir -p /apks
 
 EXPOSE 6080 8080 8081
 
-# The emulator requires /dev/kvm from host: run with --device /dev/kvm
+# The emulator prefers /dev/kvm from host for performance: run with --device /dev/kvm
+# Will fallback to software emulation if KVM is not available
 ENTRYPOINT ["/start.sh"]

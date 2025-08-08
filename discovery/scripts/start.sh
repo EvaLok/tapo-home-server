@@ -40,8 +40,17 @@ log "Starting ADB server..."
 adb start-server >/var/log/adb.log 2>&1 || true
 
 # 4) Start Android emulator with proxy to mitmproxy
-# Use KVM from host: ensure container started with --device /dev/kvm
-log "Launching Android emulator (this can take ~30-60s)..."
+# Check if KVM is available; fallback to software emulation if not
+EMULATOR_ACCEL=""
+if [ -c /dev/kvm ]; then
+	log "KVM device found - using hardware acceleration"
+	EMULATOR_ACCEL="-accel on"
+else
+	log "KVM device not available - using software emulation (slower but works)"
+	EMULATOR_ACCEL="-accel off"
+fi
+
+log "Launching Android emulator (this can take ~30-60s with KVM, 2-5 minutes without)..."
 # Important flags:
 # -writable-system: allow remount /system to install CA
 # -http-proxy: force emulator network through mitmproxy (host from emulator is 10.0.2.2)
@@ -52,6 +61,7 @@ emulator -avd tapo-avd \
 	-netdelay none -netspeed full \
 	-writable-system \
 	-http-proxy http://10.0.2.2:8080 \
+	${EMULATOR_ACCEL} \
 	-qemu -m 2048 >/var/log/emulator.log 2>&1 &
 
 # 5) Wait for boot

@@ -11,10 +11,13 @@ All from inside a single container.
 ## Requirements
 
 - Host OS: Ubuntu 24
+- Docker
+
+**Optional for better performance:**
 - CPU virtualization enabled (KVM)
 - Docker with access to `/dev/kvm`
 
-Verify KVM:
+Verify KVM (optional):
 ```bash
 ls /dev/kvm
 ```
@@ -27,9 +30,20 @@ docker build -t tapo-emulator:latest .
 
 ## Run
 
+**With KVM (faster):**
 ```bash
 docker run --rm -it \
 	--device /dev/kvm \
+	-p 6080:6080 \
+	-p 8080:8080 \
+	-p 8081:8081 \
+	-v "$PWD/apks":/apks \
+	tapo-emulator:latest
+```
+
+**Without KVM (slower but works if KVM is unavailable):**
+```bash
+docker run --rm -it \
 	-p 6080:6080 \
 	-p 8080:8080 \
 	-p 8081:8081 \
@@ -78,7 +92,9 @@ In mitmweb (http://localhost:8081):
 
 ## Notes/Troubleshooting
 
-- If the emulator fails to start, ensure `/dev/kvm` is passed and not in use.
+- The container automatically detects if KVM is available and uses software emulation as fallback
+- Without KVM, the emulator will be significantly slower but still functional
+- If the emulator fails to start with KVM, try running without `--device /dev/kvm`
 - If HTTPS isn’t decrypted:
     - Confirm mitm CA installed: `adb shell ls /system/etc/security/cacerts | grep -i mitm`
     - Check that proxy is set: `adb shell settings get global http_proxy` should print `10.0.2.2:8080`
