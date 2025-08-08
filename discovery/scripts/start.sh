@@ -122,14 +122,40 @@ while true; do
 	sleep 5
 done
 
-# Give a bit more time for settings provider to be ready
-sleep 3
+# Give more time for ADB daemon to be fully ready after boot
+log "Waiting for ADB daemon to be ready..."
+sleep 10
+
+# Verify ADB connection is stable before proceeding
+ADB_READY=false
+for i in $(seq 1 30); do
+	if adb shell echo "test" >/dev/null 2>&1; then
+		ADB_READY=true
+		break
+	fi
+	log "ADB not ready yet, waiting... (attempt $i/30)"
+	sleep 2
+done
+
+if [ "$ADB_READY" = "false" ]; then
+	log "ERROR: ADB connection failed after boot completion"
+	log "Check if device is accessible: adb devices"
+	adb devices
+	exit 1
+fi
 
 # 6) Root & remount, install mitm CA into system store
 log "Enabling root and installing mitmproxy CA into system trust store..."
-adb root >/dev/null 2>&1 || true
+if ! adb root >/dev/null 2>&1; then
+	log "WARNING: Failed to enable root access. Checking device status..."
+	adb devices
+	adb shell getprop ro.debuggable
+	log "Trying to continue anyway..."
+fi
 sleep 1
-adb remount >/dev/null 2>&1 || true
+if ! adb remount >/dev/null 2>&1; then
+	log "WARNING: Failed to remount system partition. This may be expected on some emulator versions."
+fi
 sleep 1
 
 # Ensure mitm CA exists
