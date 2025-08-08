@@ -221,7 +221,40 @@ if adb root >/dev/null 2>&1; then
 		log "WARNING: Failed to remount system partition. This may be expected on some emulator versions."
 	fi
 else
-	log "WARNING: Failed to enable root access. Checking device status..."
+	log "WARNING: Failed to enable root access. Device may have restarted - waiting for reconnection..."
+	
+	# Wait for device to come back online in case adb root caused a restart
+	if ! timeout 60 adb wait-for-device; then
+		log "ERROR: Device failed to reconnect after failed root attempt"
+		adb devices
+		exit 1
+	fi
+	
+	# Wait for ADB connection to stabilize
+	NOROOT_ADB_READY=false
+	for i in $(seq 1 15); do
+		DEVICE_STATE=$(adb get-state 2>/dev/null || echo "unknown")
+		
+		if [ "$DEVICE_STATE" = "device" ]; then
+			if adb shell echo "test" >/dev/null 2>&1; then
+				NOROOT_ADB_READY=true
+				log "ADB connection verified after failed root attempt (attempt $i/15)"
+				break
+			fi
+		fi
+		
+		log "ADB not ready after failed root (state: $DEVICE_STATE), waiting... (attempt $i/15)"
+		sleep 2
+	done
+	
+	if [ "$NOROOT_ADB_READY" = "false" ]; then
+		log "ERROR: ADB connection failed after root attempt"
+		adb devices
+		exit 1
+	fi
+	
+	# Now check device properties
+	log "Checking device status..."
 	adb devices
 	DEBUGGABLE=$(adb shell getprop ro.debuggable 2>/dev/null || echo "unknown")
 	log "Device debuggable property: $DEBUGGABLE"
@@ -235,7 +268,7 @@ else
 		log "Make sure the emulator is using Google APIs image, not Google Play image"
 		exit 1
 	else
-		log "Trying to continue without root access (certificate installation may fail)..."
+		log "Continuing without root access (certificate installation may fail)..."
 	fi
 fi
 
