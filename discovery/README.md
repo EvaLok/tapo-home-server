@@ -54,6 +54,7 @@ docker run --rm -it \
 - Mount APKs into `./apks` to auto-install (optional).
 - Access the emulator UI: http://localhost:6080
 - Inspect traffic in mitmweb: http://localhost:8081
+- Port 8080 is the mitmproxy server (for emulator traffic only, not a web interface)
 
 ## What the container does
 

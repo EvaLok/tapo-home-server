@@ -35,7 +35,7 @@ log "Starting mitmproxy and mitmweb..."
 # Create certs proactively
 mitmdump -q -p 8080 --ssl-insecure --set block_global=false >/var/log/mitmdump.log 2>&1 &
 sleep 2
-mitmweb -q -p 8081 --set block_global=false >/var/log/mitmweb.log 2>&1 &
+mitmweb -q --web-host 0.0.0.0 -p 8081 --set block_global=false >/var/log/mitmweb.log 2>&1 &
 log "mitmweb available at http://localhost:8081"
 
 # 3) Start ADB server
@@ -142,8 +142,8 @@ fi
 
 log "Setup complete."
 log "Access emulator UI:    http://localhost:6080"
-log "Inspect traffic:       http://localhost:8081"
-log "Proxy inside emulator: 10.0.2.2:8080 (mitmproxy)"
+log "Inspect traffic:       http://localhost:8081 (mitmweb interface)"
+log "Proxy inside emulator: 10.0.2.2:8080 (mitmproxy - for emulator only, not web UI)"
 log "Frida is running on the device. Example (in another shell inside container):"
 log "  frida -U -f com.tplink.tapo -l /tools/repin.js --no-pause"
 
