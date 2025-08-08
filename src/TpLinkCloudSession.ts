@@ -24,7 +24,7 @@ export class TpLinkCloudSession {
     }
 
     async getDeviceList(): Promise<Array<ITpLinkCloudDeviceListItem>> {
-        const response = await this.makeRequest("getDeviceList");
+        const response = await this.makeRequest("getDeviceList", "https://wap.tplinkcloud.com");
 
         if ( ! response.deviceList ) {
             throw new Error("No device list found in response");
@@ -33,13 +33,30 @@ export class TpLinkCloudSession {
         return response.deviceList || [];
     }
 
+    async getDeviceInfo( device: ITpLinkCloudDeviceListItem ) : Promise<ITpLinkCloudDeviceListItem> {
+        const response = await this.makeRequest(
+            "getDeviceInfo",
+            device.appServerUrl,
+            {
+                deviceId: device.deviceId,
+            }
+        );
+
+        if ( ! response ) {
+            throw new Error(`No device info found for deviceId: ${device.deviceId}`);
+        }
+
+        return response as ITpLinkCloudDeviceListItem;
+    }
+
     async makeRequest(
         method: string,
+        url: string,
         params: Record<string, any> = {}
     ): Promise<Record<string, any>> {
         const request = {
             method: "POST",
-            url: "https://wap.tplinkcloud.com",
+            url: url,
             params: {
                 appName: this.appName,
                 termID: this.termID,
@@ -50,16 +67,21 @@ export class TpLinkCloudSession {
                 token: this.token
             },
             headers: {
+                "cache-control": "no-cache",
                 "User-Agent": this.userAgent,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                // Authorization: `Bearer ${this.token}`,
             },
-            data: { method, ...params }
+            data: {
+                method: method,
+                params: params,
+            }
         };
 
         const response = await axios(request);
 
         if( ! response.data || response.data.error_code !== 0 ){
-            throw new Error(`Request failed: ${response.data.error_code}`);
+            throw new Error(`Request failed: ${response.data.error_code} ${response.data.msg}`);
         }
 
         return response.data.result;

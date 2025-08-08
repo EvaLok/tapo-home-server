@@ -34,6 +34,13 @@ describe(`TpLinkCloud`, function () {
             const p306 = devices.find(device => device.deviceName === "P306");
             Assert.isDefined(p306, "P306 device should be found in the device list");
 
+
+            // get device info
+            const deviceInfo = await session.getDeviceInfo(p306);
+
+            Assert.isObject(deviceInfo, "Device info should be an object");
+
+
         });
     });
 });
