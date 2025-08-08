@@ -64,12 +64,14 @@ fi
 # Important flags:
 # -writable-system: allow remount /system to install CA
 # -http-proxy: force emulator network through mitmproxy (host from emulator is 10.0.2.2)
+# -no-audio: disable audio to avoid PulseAudio dependency issues
 emulator -avd tapo-avd \
 	-no-boot-anim \
 	-camera-back none -camera-front none \
 	-netdelay none -netspeed full \
 	-writable-system \
 	-http-proxy http://10.0.2.2:8080 \
+	-no-audio \
 	${EMULATOR_ARGS} >/var/log/emulator.log 2>&1 &
 
 # 5) Wait for boot with timeout
