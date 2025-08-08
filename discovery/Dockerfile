@@ -80,7 +80,9 @@ RUN echo "no" | avdmanager create avd \
 		-n tapo-avd \
 		-k "${ANDROID_IMG}" \
 		-d "pixel" && \
-	echo "hw.keyboard=yes" >> /root/.android/avd/tapo-avd.avd/config.ini
+	echo "hw.keyboard=yes" >> /root/.android/avd/tapo-avd.avd/config.ini && \
+	echo "PlayStore.enabled=false" >> /root/.android/avd/tapo-avd.avd/config.ini && \
+	echo "hw.arc=false" >> /root/.android/avd/tapo-avd.avd/config.ini
 
 # Download frida-server for Android x86_64 (must match FRIDA_SERVER_VERSION)
 RUN mkdir -p /tools && \
