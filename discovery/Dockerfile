@@ -79,8 +79,8 @@ RUN echo "no" | avdmanager create avd \
 # Download frida-server for Android x86_64 (must match FRIDA_SERVER_VERSION)
 RUN mkdir -p /tools && \
 	cd /tools && \
-	curl -fsSL -o frida-server.xz "https://github.com/frida/frida/releases/download/${FRIDA_SERVER_VERSION}/frida-server-${FRIDA_SERVER_VERSION}-android-x86_64.xz" && \
-	unxz frida-server.xz && \
+	curl -fsSL -o "frida-server-${FRIDA_SERVER_VERSION}-android-x86_64.xz" "https://github.com/frida/frida/releases/download/${FRIDA_SERVER_VERSION}/frida-server-${FRIDA_SERVER_VERSION}-android-x86_64.xz" && \
+	unxz "frida-server-${FRIDA_SERVER_VERSION}-android-x86_64.xz" && \
 	mv "frida-server-${FRIDA_SERVER_VERSION}-android-x86_64" frida-server && \
 	chmod +x /tools/frida-server
 
