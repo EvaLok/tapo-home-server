@@ -124,24 +124,59 @@ done
 
 # Give more time for ADB daemon to be fully ready after boot
 log "Waiting for ADB daemon to be ready..."
-sleep 10
+sleep 15
 
-# Verify ADB connection is stable before proceeding
+# Verify ADB connection is stable before proceeding with robust retry logic
 ADB_READY=false
 for i in $(seq 1 30); do
-	if adb shell echo "test" >/dev/null 2>&1; then
-		ADB_READY=true
-		break
+	# Check device state specifically
+	DEVICE_STATE=$(adb get-state 2>/dev/null || echo "unknown")
+	
+	if [ "$DEVICE_STATE" = "device" ]; then
+		# Double-check with a simple shell command
+		if adb shell echo "test" >/dev/null 2>&1; then
+			ADB_READY=true
+			log "ADB connection verified (attempt $i/30)"
+			break
+		fi
 	fi
-	log "ADB not ready yet, waiting... (attempt $i/30)"
+	
+	log "ADB not ready yet (state: $DEVICE_STATE), waiting... (attempt $i/30)"
+	
+	# If device is offline, try restarting ADB server
+	if [ "$DEVICE_STATE" = "offline" ] && [ $i -eq 10 ]; then
+		log "Device offline, restarting ADB server..."
+		adb kill-server >/dev/null 2>&1 || true
+		sleep 2
+		adb start-server >/dev/null 2>&1 || true
+		sleep 3
+	fi
+	
 	sleep 2
 done
 
 if [ "$ADB_READY" = "false" ]; then
 	log "ERROR: ADB connection failed after boot completion"
-	log "Check if device is accessible: adb devices"
+	log "Final device state check:"
 	adb devices
-	exit 1
+	FINAL_STATE=$(adb get-state 2>/dev/null || echo "unknown")
+	log "Device state: $FINAL_STATE"
+	
+	# Try one more ADB server restart as last resort
+	log "Attempting final ADB server restart..."
+	adb kill-server >/dev/null 2>&1 || true
+	sleep 3
+	adb start-server >/dev/null 2>&1 || true
+	sleep 5
+	
+	# Final check
+	if adb shell echo "test" >/dev/null 2>&1; then
+		log "ADB connection recovered after server restart"
+		ADB_READY=true
+	else
+		log "ADB connection still failed. Device may need more time to stabilize."
+		exit 1
+	fi
 fi
 
 # 6) Root & remount, install mitm CA into system store
@@ -214,7 +249,30 @@ while true; do
 	
 	sleep 5
 done
-sleep 3
+sleep 5
+
+# Re-verify ADB connection after reboot
+log "Verifying ADB connection after reboot..."
+ADB_READY_REBOOT=false
+for i in $(seq 1 20); do
+	DEVICE_STATE=$(adb get-state 2>/dev/null || echo "unknown")
+	
+	if [ "$DEVICE_STATE" = "device" ]; then
+		if adb shell echo "test" >/dev/null 2>&1; then
+			ADB_READY_REBOOT=true
+			log "ADB connection verified after reboot (attempt $i/20)"
+			break
+		fi
+	fi
+	
+	log "ADB not ready after reboot (state: $DEVICE_STATE), waiting... (attempt $i/20)"
+	sleep 2
+done
+
+if [ "$ADB_READY_REBOOT" = "false" ]; then
+	log "WARNING: ADB connection issues after reboot, but continuing..."
+	adb devices
+fi
 
 # 8) Re-enable root after reboot
 adb root >/dev/null 2>&1 || true
