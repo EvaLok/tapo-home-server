@@ -3,15 +3,17 @@
 # - Xvfb + Fluxbox + x11vnc + noVNC
 # - mitmproxy + mitmweb (via pipx)
 # - Frida tools and frida-server (android-x86_64)
-# NOTE: Requires host KVM device passed to container:
+# NOTE: For best performance, pass host KVM device to container:
 #   --device /dev/kvm
+# Will fallback to software emulation if KVM is not available.
 
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
-ENV LANG=C.UTF-8
-ENV LC_ALL=C.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV LANGUAGE=en_US:en
 ENV HOME=/root
 
 # Android SDK locations
@@ -38,9 +40,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	python3 python3-pip python3-venv python3-dev pipx \
 	xvfb x11vnc fluxbox novnc websockify \
 	openjdk-17-jre-headless \
+	locales \
 	# emulator runtime deps
 	libc6 libstdc++6 libgcc-s1 libdbus-1-3 libnss3 libx11-6 libxext6 libxi6 libxrender1 libxrandr2 libxfixes3 libxcursor1 libxcomposite1 libxdamage1 libxkbcommon0 libgbm1 libglu1-mesa \
+	# PulseAudio library for emulator QEMU audio subsystem
+	libpulse0 \
 	qemu-kvm xz-utils \
+	&& locale-gen en_US.UTF-8 \
 	&& rm -rf /var/lib/apt/lists/*
 
 # mitmproxy (provides mitmproxy + mitmweb + mitmdump)
@@ -74,13 +80,15 @@ RUN echo "no" | avdmanager create avd \
 		-n tapo-avd \
 		-k "${ANDROID_IMG}" \
 		-d "pixel" && \
-	echo "hw.keyboard=yes" >> /root/.android/avd/tapo-avd.avd/config.ini
+	echo "hw.keyboard=yes" >> /root/.android/avd/tapo-avd.avd/config.ini && \
+	echo "PlayStore.enabled=false" >> /root/.android/avd/tapo-avd.avd/config.ini && \
+	echo "hw.arc=false" >> /root/.android/avd/tapo-avd.avd/config.ini
 
 # Download frida-server for Android x86_64 (must match FRIDA_SERVER_VERSION)
 RUN mkdir -p /tools && \
 	cd /tools && \
-	curl -fsSL -o frida-server.xz "https://github.com/frida/frida/releases/download/${FRIDA_SERVER_VERSION}/frida-server-${FRIDA_SERVER_VERSION}-android-x86_64.xz" && \
-	unxz frida-server.xz && \
+	curl -fsSL -o "frida-server-${FRIDA_SERVER_VERSION}-android-x86_64.xz" "https://github.com/frida/frida/releases/download/${FRIDA_SERVER_VERSION}/frida-server-${FRIDA_SERVER_VERSION}-android-x86_64.xz" && \
+	unxz "frida-server-${FRIDA_SERVER_VERSION}-android-x86_64.xz" && \
 	mv "frida-server-${FRIDA_SERVER_VERSION}-android-x86_64" frida-server && \
 	chmod +x /tools/frida-server
 
@@ -89,10 +97,26 @@ COPY scripts/start.sh /start.sh
 COPY tools/repin.js /tools/repin.js
 RUN chmod +x /start.sh
 
+# Configure noVNC to use English by default (remove non-English locale files)
+RUN rm -f /usr/share/novnc/app/locale/ja.json \
+	/usr/share/novnc/app/locale/zh_*.json \
+	/usr/share/novnc/app/locale/ko.json \
+	/usr/share/novnc/app/locale/fr.json \
+	/usr/share/novnc/app/locale/de.json \
+	/usr/share/novnc/app/locale/es.json \
+	/usr/share/novnc/app/locale/it.json \
+	/usr/share/novnc/app/locale/pl.json \
+	/usr/share/novnc/app/locale/ru.json \
+	/usr/share/novnc/app/locale/tr.json \
+	/usr/share/novnc/app/locale/cs.json \
+	/usr/share/novnc/app/locale/nl.json \
+	/usr/share/novnc/app/locale/pt.json
+
 # Place a workspace for APKs (mount host folder here)
 RUN mkdir -p /apks
 
 EXPOSE 6080 8080 8081
 
-# The emulator requires /dev/kvm from host: run with --device /dev/kvm
+# The emulator prefers /dev/kvm from host for performance: run with --device /dev/kvm
+# Will fallback to software emulation if KVM is not available
 ENTRYPOINT ["/start.sh"]
