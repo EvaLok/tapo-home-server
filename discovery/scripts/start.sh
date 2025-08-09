@@ -322,16 +322,57 @@ if [ -f "${MITM_PEM}" ]; then
 	log "- Target certificate path: ${CERT_PATH}"
 	log "- Certificate hash: ${HASH}"
 	
+	# Verify ADB connection is still stable before certificate operation
+	log "Verifying ADB connection stability before certificate installation..."
+	DEVICE_STATE=$(adb get-state 2>/dev/null || echo "unknown")
+	if [ "$DEVICE_STATE" != "device" ]; then
+		log "ERROR: Device not ready for certificate installation (state: $DEVICE_STATE)"
+		adb devices
+		exit 1
+	fi
+	
+	# Test basic shell command to ensure device is responsive
+	if ! adb shell "echo 'connection_test'" >/dev/null 2>&1; then
+		log "ERROR: Device not responding to shell commands"
+		adb devices
+		exit 1
+	fi
+	log "ADB connection verified - device is responsive"
+	
 	# Check if target certificate already exists
 	if adb shell "test -f ${CERT_PATH}" >/dev/null 2>&1; then
 		log "WARNING: Certificate ${CERT_PATH} already exists, removing it first"
 		adb shell "rm -f ${CERT_PATH}" >/dev/null 2>&1 || true
 	fi
 	
-	# Try the certificate installation with detailed error reporting
-	log "Attempting certificate push..."
-	PUSH_OUTPUT=$(adb push "${MITM_DER}" "${CERT_PATH}" 2>&1)
+	# Try the certificate installation with detailed error reporting and timeout
+	log "Attempting certificate push (timeout: 60 seconds)..."
+	
+	# Start the push command in background with timeout and show progress
+	(
+		sleep 10 && echo "[startup] Certificate push in progress (10s)..." >&2
+		sleep 20 && echo "[startup] Certificate push in progress (30s)..." >&2
+		sleep 20 && echo "[startup] Certificate push in progress (50s)..." >&2
+	) &
+	PROGRESS_PID=$!
+	
+	PUSH_OUTPUT=$(timeout 60 adb push "${MITM_DER}" "${CERT_PATH}" 2>&1)
 	PUSH_RESULT=$?
+	
+	# Kill progress indicator
+	kill $PROGRESS_PID 2>/dev/null || true
+	wait $PROGRESS_PID 2>/dev/null || true
+	
+	# Check if command timed out
+	if [ $PUSH_RESULT -eq 124 ]; then
+		log "ERROR: Certificate push timed out after 60 seconds"
+		log "This suggests ADB connection issues or device unresponsiveness"
+		log "Checking device status..."
+		adb devices
+		DEVICE_STATE=$(adb get-state 2>/dev/null || echo "unknown")
+		log "Device state: $DEVICE_STATE"
+		exit 1
+	fi
 	
 	if [ $PUSH_RESULT -eq 0 ]; then
 		log "Certificate push successful: $PUSH_OUTPUT"
