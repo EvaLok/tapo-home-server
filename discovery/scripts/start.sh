@@ -307,10 +307,49 @@ if [ -f "${MITM_PEM}" ]; then
 	CERT_PATH="${CACERTS_DIR}/${HASH}.0"
 	log "Installing certificate as ${CERT_PATH}"
 	
-	if adb push "${MITM_DER}" "${CERT_PATH}" >/dev/null 2>&1; then
+	# Enhanced diagnostics before attempting certificate installation
+	log "Pre-installation diagnostics:"
+	log "- Local certificate file: ${MITM_DER}"
+	if [ -f "${MITM_DER}" ]; then
+		log "- Local cert file size: $(stat -c%s ${MITM_DER}) bytes"
+		log "- Local cert file permissions: $(stat -c%a ${MITM_DER})"
+	else
+		log "ERROR: Local certificate file ${MITM_DER} does not exist"
+		exit 1
+	fi
+	log "- Target certificate path: ${CERT_PATH}"
+	log "- Certificate hash: ${HASH}"
+	
+	# Check if target certificate already exists
+	if adb shell "test -f ${CERT_PATH}" >/dev/null 2>&1; then
+		log "WARNING: Certificate ${CERT_PATH} already exists, removing it first"
+		adb shell "rm -f ${CERT_PATH}" >/dev/null 2>&1 || true
+	fi
+	
+	# Try the certificate installation with detailed error reporting
+	log "Attempting certificate push..."
+	PUSH_OUTPUT=$(adb push "${MITM_DER}" "${CERT_PATH}" 2>&1)
+	PUSH_RESULT=$?
+	
+	if [ $PUSH_RESULT -eq 0 ]; then
+		log "Certificate push successful: $PUSH_OUTPUT"
 		if adb shell "chmod 644 ${CERT_PATH}" >/dev/null 2>&1; then
 			log "Successfully installed mitmproxy CA as ${CERT_PATH}"
-			CERT_INSTALLED=true
+			# Verify the certificate was actually installed
+			if adb shell "test -f ${CERT_PATH}" >/dev/null 2>&1; then
+				INSTALLED_SIZE=$(adb shell "stat -c%s ${CERT_PATH}" 2>/dev/null | tr -d '\r\n')
+				LOCAL_SIZE=$(stat -c%s ${MITM_DER})
+				log "Certificate verification: local=${LOCAL_SIZE}B, installed=${INSTALLED_SIZE}B"
+				if [ "$LOCAL_SIZE" = "$INSTALLED_SIZE" ]; then
+					CERT_INSTALLED=true
+				else
+					log "ERROR: Certificate size mismatch after installation"
+					exit 1
+				fi
+			else
+				log "ERROR: Certificate file missing after installation"
+				exit 1
+			fi
 		else
 			log "ERROR: Failed to set permissions on system certificate"
 			log "Debug: Checking certificate file status..."
@@ -318,12 +357,17 @@ if [ -f "${MITM_PEM}" ]; then
 			exit 1
 		fi
 	else
-		log "ERROR: Failed to install certificate to system store"
+		log "ERROR: Failed to push certificate to system store"
+		log "Push command output: $PUSH_OUTPUT"
+		log "Push exit code: $PUSH_RESULT"
 		log "Debug: Certificate installation diagnostics..."
-		adb shell "ls -la ${CACERTS_DIR}/"
-		adb shell "df /system"
-		adb shell "mount | grep system"
-		log "Local certificate file size: $(stat -c%s ${MITM_DER}) bytes"
+		adb shell "ls -la ${CACERTS_DIR}/" 2>/dev/null || log "Failed to list cacerts directory"
+		adb shell "df /system" 2>/dev/null || log "Failed to check system disk space"
+		adb shell "mount | grep system" 2>/dev/null || log "Failed to check system mount status"
+		log "Available space in /system:"
+		adb shell "df -h /system | tail -1" 2>/dev/null || log "Failed to get system space info"
+		log "SELinux status:"
+		adb shell "getenforce" 2>/dev/null || log "Failed to get SELinux status"
 		exit 1
 	fi
 else
