@@ -257,6 +257,8 @@ else
 	else
 		log "ERROR: Root access failed for unknown reasons"
 		log "Check emulator logs for more details: tail /var/log/emulator.log"
+		log "Last 50 lines of emulator.log:"
+    tail -n 50 /var/log/emulator.log
 	fi
 	
 	log "SOLUTION: This container requires root access to function properly."
